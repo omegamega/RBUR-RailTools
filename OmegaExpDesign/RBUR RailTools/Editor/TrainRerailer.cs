@@ -1,11 +1,8 @@
+#if UNITY_EDITOR 
 using Cinemachine;
 using frou01.RigidBodyTrain;
-using log4net.Util;
-using omegaExpDesign.RigidBodyTrain;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
-using UnityEditor.Graphs;
 using UnityEngine;
 
 namespace omegaExpDesign.RBURTool
@@ -19,7 +16,7 @@ namespace omegaExpDesign.RBURTool
 //        private float coupleDistance = 5f;
         private List<(Train train, Train train2, Rail_Script rail, string message, MessageType type)> results = null;
 
-        [MenuItem("Tools/OmegaExpDesign - RBUR Tools/TrainRerailer")]
+        [MenuItem("Tools/OmegaExpDesign - RBUR RailTools/TrainRerailer")]
         public static void Open()
         {
             GetWindow<TrainRerailer>("TrainRerailer");
@@ -27,13 +24,18 @@ namespace omegaExpDesign.RBURTool
 
         private void OnGUI()
         {
+            if(EditorApplication.isPlaying)
+            {
+                EditorGUILayout.LabelField("Play中は操作できません");
+                return;
+            }
+
             EditorGUILayout.LabelField("対象の車両をレールに乗せます。Noneの場合はすべての車両、指定した場合はその車両を乗せます");
             targetTrain = (Train)EditorGUILayout.ObjectField("Target Train", targetTrain, typeof(Train), true);
             EditorGUILayout.LabelField("既にレールに乗っていても、探索し直してレールに乗せ直します");
             isForceRerail = EditorGUILayout.Toggle("ForceRerail", isForceRerail);
             //            isAutoCoupling = EditorGUILayout.Toggle("AutoCoupling", isAutoCoupling);
             //            coupleDistance = EditorGUILayout.FloatField("Distance to couple", coupleDistance);
-            /*
             string buttonText = isAutoCoupling ? "Rerail & couple train" : "Rerail train";
             if (GUILayout.Button(buttonText))
             {
@@ -121,7 +123,7 @@ namespace omegaExpDesign.RBURTool
                     }
                 }
             }
-            */
+            
         }
 
         // 対象の車両をレールに乗せる
@@ -137,7 +139,7 @@ namespace omegaExpDesign.RBURTool
             {
                 // 親オブジェクトごと車両を移動させる
                 Undo.RecordObject(trainParent.transform, "Snap to rail(move)");
-                trainParent.transform.position = point + new Vector3(0, 0.1f, 0);   // 0着地させるとレールにのらない現象があった謎(BogieRail_F/Rがnullになる
+                trainParent.transform.position = point + new Vector3(0f, 0f, 0f);   // 0着地させるとレールにのらない現象があった謎(BogieRail_F/Rがnullになる
                 Undo.RecordObject(targetTrain, "Snap to rail(set rail)");
                 targetTrain.BogieRail_F = rail;
                 targetTrain.BogieRail_B = rail;
@@ -277,3 +279,5 @@ namespace omegaExpDesign.RBURTool
         
     }
 }
+
+#endif
