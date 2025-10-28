@@ -4,7 +4,6 @@ using UnityEditor;
 using frou01.RigidBodyTrain;
 using System.Collections.Generic;
 using Cinemachine;
-using HarmonyLib;
 
 namespace omegaExpDesign.RigidBodyTrain
 {
@@ -20,6 +19,8 @@ namespace omegaExpDesign.RigidBodyTrain
         private Vector3 prevWaypointEndPos = Vector3.zero;
         private float snapWaypointDistance = 20f;
         private bool autoWaypointConnect = true;
+        private float straightThreshold = 5f;
+        private float easyCantAngle = 3f;
 
         private bool isVisualizeActive = false;
         private bool isNameVisible = true;
@@ -39,7 +40,8 @@ namespace omegaExpDesign.RigidBodyTrain
         [MenuItem("Tools/OmegaExpDesign - RBUR RailTools/RailSnapTool")]
         public static void Open()
         {
-            GetWindow<SnapToolWindow>("SnapTool");
+            var window = GetWindow<SnapToolWindow>("SnapTool");
+            window.minSize = new Vector2(300, 200);
         }
 
         private void OnEnable()
@@ -214,34 +216,135 @@ namespace omegaExpDesign.RigidBodyTrain
             // WaypointAdjustはレールを1つ選択している時のみ操作できる
             using (new EditorGUI.DisabledScope(!(Selection.count == 1 && Selection.activeGameObject?.GetComponent<Rail_Script>() != null)))
             {
+                GUILayout.Label(new GUIContent("Endpoint Tagent","終端のTangentを修正します"));
                 var rail = Selection.activeGameObject?.GetComponent<Rail_Script>();
                 using (new EditorGUI.DisabledScope(!(rail?.prev ?? false)))
                 {
-                    if (GUILayout.Button("選択中の、prev側Tangentを接続先に合わせる"))
+                    if (GUILayout.Button("prev側Tangentを接続先Tangentに合わせる"))
                     {
                         CorrectWaypointTangentWithPrev(rail);
                     }
                 }
                 using (new EditorGUI.DisabledScope(!(rail?.next ?? false)))
                 {
-                    if (GUILayout.Button("選択中の、next側Tangentを接続先に合わせる"))
+                    if (GUILayout.Button("next側Tangentを接続先Tangentに合わせる"))
                     {
                         CorrectWaypointTangentWithNext(rail);
                     }
                 }
-                if (GUILayout.Button("選択中の、全WaypointのTangentのYを整え、スロープにする(単純)"))
+
+                EditorGUILayout.Space();
+                GUILayout.Label(new GUIContent("Slope","Waypoint全体を編集し、スロープにします"));
+                if (GUILayout.Button("全WaypointのTangent.Yを整え、滑らかな坂にする。スムース化(簡易)"))
                 {
-                    CorrectWaypointTangentToSlope(rail);
+                    SmoothWaypointTangentToSlope(rail);
+                }
+                if (GUILayout.Button("始点と終点のY座標に基づいて、中間Waypoint.Yを編集して、均一なスロープにする(簡易)"))
+                {
+                    SmoothWaypointHeightToSlope(rail);
+                }
+
+                EditorGUILayout.Space();
+                GUILayout.Label(new GUIContent("Cant", "Waypoint.rollを設定します"));
+                easyCantAngle = EditorGUILayout.FloatField(new GUIContent("Cant Angle", "カントの傾斜"), easyCantAngle);
+                straightThreshold = EditorGUILayout.FloatField(new GUIContent("Cant Threshold", "曲線と見なすカーブ角度"), straightThreshold);
+                if (GUILayout.Button("カントを設定する(簡易)"))
+                {
+                    ApplyEasyCantWaypoint(rail, straightThreshold,easyCantAngle);
                 }
             }
 
-            // TODO
-            /*
-            if (GUILayout.Button("接続が1箇所の時、Tangentに合わせてオブジェクトを回す"))
+
+            EditorGUILayout.Space();
+            GUILayout.Label(new GUIContent("Miscs", "雑多なツール群です"), e);
+
             {
-                頑張ればできるんちゃうか？そのうち考えてもいいけど重要度は低い
+                // 選択レールから非選択レールへの接続数を調べる。ついでに接続位置とズレ角も
+                int connectionCount = 0;
+                Vector3 connectionPosition = Vector3.zero;
+                float angleDiff = 0f;
+                Vector3 sv = Vector3.zero;
+                Vector3 ov = Vector3.zero;
+                foreach (var rail in selectionRails)
+                {
+                    // 選択レールのprevは非選択レールへ接続している
+                    if (rail.prev && otherRails.Contains(rail.prev))
+                    {
+                        connectionCount++;
+                        connectionPosition = rail.cinemachinePath.EvaluatePositionAtUnit(0f, CinemachinePathBase.PositionUnits.Normalized);
+
+                        if (rail.prev.prev == rail)
+                        {
+                            // railのprev側と、rail.prevのprev側が接続している
+                            sv = rail.cinemachinePath.EvaluateTangentAtUnit(0f, CinemachinePathBase.PositionUnits.Normalized);
+                            ov = rail.prev.cinemachinePath.EvaluateTangentAtUnit(0f, CinemachinePathBase.PositionUnits.Normalized);
+                        }
+                        if (rail.prev.next == rail)
+                        {
+                            // railのprev側と、rail.prevのnext側が接続している
+                            sv = rail.cinemachinePath.EvaluateTangentAtUnit(0f, CinemachinePathBase.PositionUnits.Normalized);
+                            ov = rail.prev.cinemachinePath.EvaluateTangentAtUnit(1f, CinemachinePathBase.PositionUnits.Normalized);
+                        }
+                    }
+
+                    // 選択レールのnextは非選択レールへ接続している
+                    if (rail.next && otherRails.Contains(rail.next))
+                    {
+                        connectionCount++;
+                        connectionPosition = rail.cinemachinePath.EvaluatePositionAtUnit(1f, CinemachinePathBase.PositionUnits.Normalized);
+
+                        if (rail.next.prev == rail)
+                        {
+                            // railのnext側と、rail.prevのprev側が接続している
+                            sv = rail.cinemachinePath.EvaluateTangentAtUnit(1f, CinemachinePathBase.PositionUnits.Normalized);
+                            ov = rail.next.cinemachinePath.EvaluateTangentAtUnit(0f, CinemachinePathBase.PositionUnits.Normalized);
+                        }
+                        if (rail.next.next == rail)
+                        {
+                            // railのnext側と、rail.prevのnext側が接続している
+                            sv = rail.cinemachinePath.EvaluateTangentAtUnit(1f, CinemachinePathBase.PositionUnits.Normalized);
+                            ov = rail.next.cinemachinePath.EvaluateTangentAtUnit(1f, CinemachinePathBase.PositionUnits.Normalized);
+                        }
+                    }
+                }
+                if (connectionPosition != Vector3.zero) {
+                    sv.y = 0;   // XZ平面でのみ見る
+                    ov.y = 0;
+                    if (Vector3.Cross(sv, ov) == Vector3.zero)
+                    {
+                        angleDiff = 180;
+                    }
+                    else
+                    {
+                        if (Vector3.Cross(sv, ov).z > 0)
+                        {
+                            angleDiff = -Vector3.Angle(ov, sv);
+                        }
+                        else
+                        {
+                            angleDiff = Vector3.Angle(ov, sv);
+                        }
+                    }
+                    
+                }
+
+                using (new EditorGUI.DisabledScope(connectionCount != 1 && Selection.count == 1))
+                {
+                    if (GUILayout.Button("接続が1箇所の時、接続点のTangentに合わせて選択オブジェクトを回す"))
+                    {
+                        // 選択GameObjectを動かす(個々のレールではなく)
+                        // TODO:複数選択ドラッグと同様に、同一階層制限はあっていい(がそんなにパターンは多くなさそう？破綻しても許せるそうな気もする)
+                        foreach (var obj in Selection.gameObjects)
+                        {
+                            Undo.RecordObject(obj, "snap rotation/translate");
+                            obj.transform.Translate(-connectionPosition, Space.World);
+                            obj.transform.rotation *= Quaternion.AngleAxis(angleDiff, Vector3.up);
+                            obj.transform.Translate(connectionPosition, Space.World);
+                        }
+                    }
+                }
             }
-            */
+            
             EditorGUILayout.Space();
             GUILayout.Box("", GUILayout.Height(3), GUILayout.ExpandWidth(true));
 
@@ -451,10 +554,11 @@ namespace omegaExpDesign.RigidBodyTrain
                 // スナップ距離内ならスナップ処理(選択済みレールを移動)を行う
                 if(screenDistance < snapDistance)
                 {
-                    foreach(var rail in selectionRails)
+                    // 選択済みGameObjectを動かす(個々のレールではなく)
+                    foreach(var obj in Selection.gameObjects)
                     {
-                        Undo.RecordObject(rail, "snap position");
-                        rail.transform.position += diffDistance;
+                        Undo.RecordObject(obj, "snap position");
+                        obj.transform.position += diffDistance;
                     }
 
                     // 自動接続がオンならレール接続も行う
@@ -586,9 +690,9 @@ namespace omegaExpDesign.RigidBodyTrain
             SceneView.lastActiveSceneView.Repaint();
         }
 
-        private void CorrectWaypointTangentToSlope(Rail_Script rail)
+        private void SmoothWaypointTangentToSlope(Rail_Script rail)
         {
-            Undo.RecordObject(rail, "Correct waypoint tangent(Slope)");
+            Undo.RecordObject(rail.cinemachinePath, "Correct waypoint tangent(Slope)");
             CinemachinePath c = rail.cinemachinePath as CinemachinePath;
 
             if (c == null)
@@ -616,6 +720,70 @@ namespace omegaExpDesign.RigidBodyTrain
                 var currentVectorXZ = new Vector3(current.tangent.x,0,current.tangent.z);
 
                 c.m_Waypoints[i].tangent.y = gradient * currentVectorXZ.magnitude;
+            }
+        }
+
+        private void SmoothWaypointHeightToSlope(Rail_Script rail)
+        {
+            Undo.RecordObject(rail.cinemachinePath, "Correct waypoint height(Slope)");
+            CinemachinePath c = rail.cinemachinePath as CinemachinePath;
+
+            if (c == null)
+            {
+                EditorUtility.DisplayDialog("SnapTool", "この機能は(Smoothでない)CinemachinePathでしか利用できません", "OK");
+                return;
+            }
+            float startHeight = c.m_Waypoints[0].position.y;
+            float endHeight = c.m_Waypoints[c.m_Waypoints.Length-1].position.y;
+            float length = 0;
+
+            for (int i = 0; i < c.m_Waypoints.Length; i++)
+            {
+                length += GetSegmentLength(rail.cinemachinePath, i);
+            }
+            float lengthSum = 0;
+            for (int i = 0; i < c.m_Waypoints.Length; i++)
+            {
+                var current = c.m_Waypoints[i];
+                var gradient = (endHeight - startHeight) / length;
+                var currentVectorXZ = new Vector3(current.tangent.x, 0, current.tangent.z);
+
+                lengthSum += GetSegmentLength(rail.cinemachinePath, i);
+                var currentHeight = (endHeight - startHeight) / length * lengthSum + startHeight;
+                //if (i == c.m_Waypoints.Length - 1) currentHeight = endHeight;
+                c.m_Waypoints[i].position.y = currentHeight;
+                c.m_Waypoints[i].tangent.y = gradient * currentVectorXZ.magnitude;
+            }
+        }
+        private void ApplyEasyCantWaypoint(Rail_Script rail,float straightThreshold,float cantAngle)
+        {
+            Undo.RecordObject(rail.cinemachinePath, "Correct waypoint easy cant");
+            CinemachinePath c = rail.cinemachinePath as CinemachinePath;
+
+            c.m_Waypoints[0].roll = 0;
+            c.m_Waypoints[c.m_Waypoints.Length - 1].roll = 0;
+            for (int i = 1; i < c.m_Waypoints.Length - 1; i++)
+            {
+                Vector3 prevToCurrent = c.m_Waypoints[i].position - c.m_Waypoints[i - 1].position;
+                Vector3 currentToNext = c.m_Waypoints[i + 1].position - c.m_Waypoints[i].position;
+                prevToCurrent.Normalize();
+                currentToNext.Normalize();
+                if (Vector3.Angle(prevToCurrent,currentToNext) < straightThreshold)
+                {
+                    // 直線区間
+                    c.m_Waypoints[i].roll = 0f;
+                }
+                else if (Vector3.Dot(Vector3.Cross(prevToCurrent,currentToNext), Vector3.up) < 0)
+                {
+                    // 右
+                    c.m_Waypoints[i].roll = cantAngle;
+                }
+                else
+                {
+                    // 左
+                    c.m_Waypoints[i].roll = -cantAngle;
+                }
+
             }
         }
 

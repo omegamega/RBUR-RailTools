@@ -24,7 +24,11 @@ namespace omegaExpDesign.RBURTool
 
         private void OnGUI()
         {
-            if(EditorApplication.isPlaying)
+            var e = new GUIStyle(EditorStyles.label);
+            e.fontSize = 18;
+            GUILayout.Label(new GUIContent("Train Rerailer", "ƒŒ[ƒ‹‚ÉÔ—¼‚ğÚ‚¹‚Ü‚·"), e);
+
+            if (EditorApplication.isPlaying)
             {
                 EditorGUILayout.LabelField("Play’†‚Í‘€ì‚Å‚«‚Ü‚¹‚ñ");
                 return;
@@ -143,6 +147,7 @@ namespace omegaExpDesign.RBURTool
                 Undo.RecordObject(targetTrain, "Snap to rail(set rail)");
                 targetTrain.BogieRail_F = rail;
                 targetTrain.BogieRail_B = rail;
+                EditorUtility.SetDirty(targetTrain);
 
                 // Ô—¼‚ğ‰ñ“]‚³‚¹‚é
                 Vector3 direction = targetTrain.CouplerF.transform.position - targetTrain.CouplerB.transform.position; // ˜AŒ‹Ší•ûŒü‚©‚ç•ûŒü‚ği‚é
@@ -166,7 +171,7 @@ namespace omegaExpDesign.RBURTool
         }
 
         // Å‚à‹ß‚¢ƒŒ[ƒ‹‚ğ’T‚·
-        private (Rail_Script,Vector3 point,float distance, Vector3 tangent)FindClosestRail(Vector3 target,int resolution = 50)
+        private (Rail_Script,Vector3 point,float distance, Vector3 tangent)FindClosestRail(Vector3 target,int resolution = 10)
         {
             Rail_Script closestRail = null;
             Vector3 closestPoint = Vector3.zero;

@@ -5,8 +5,6 @@ using Cinemachine;
 using System.Collections.Generic;
 using frou01.RigidBodyTrain;
 using UnityEngine.SceneManagement;
-using BestHTTP.SecureProtocol.Org.BouncyCastle.Ocsp;
-using System.Diagnostics.Eventing.Reader;
 
 namespace omegaExpDesign.RBURTool
 {
@@ -28,7 +26,6 @@ namespace omegaExpDesign.RBURTool
         private List<(CinemachinePathBase a, CinemachinePathBase b, float distance)> results;
         private List<(GameObject rail, GameObject targetRail, string message, MessageType messageType,FixAction fixAction)> railResults;
         private int resultCount = 0;
-        GameObject targetObject; // 探索対象のレール(自身か子にRail_Scriptを持つオブジェクト)
         private Vector2 scrollPosition = Vector2.zero;
 
         private bool showRailendInfo = true;    // 終端レールのinfoを表示する
@@ -41,14 +38,16 @@ namespace omegaExpDesign.RBURTool
 
         private void OnGUI()
         {
+            var e = new GUIStyle(EditorStyles.label);
+            e.fontSize = 18;
+            GUILayout.Label(new GUIContent("Rail Checker", "レールの接続を精査して、問題がありそうな箇所を列挙します"), e);
+
             EditorGUILayout.LabelField("prev,nextのないレールが見つかった時、この距離内のレールをサジェストします");
             searchSuggestDistance = EditorGUILayout.FloatField("未接続レール探索距離", searchSuggestDistance);
-            EditorGUILayout.LabelField("走査対象。Noneの場合は全探索、指定した場合はその配下を探索します");
-            targetObject = (GameObject)EditorGUILayout.ObjectField("テスト対象のRail", targetObject, typeof(GameObject),true);
 
             if (GUILayout.Button("チェック実行"))
             {
-                StartCheckRail(targetObject);
+                StartCheckRail();
             }
 
             if(railResults != null)
@@ -101,23 +100,16 @@ namespace omegaExpDesign.RBURTool
             }
         }
 
-        private void StartCheckRail(GameObject targetObject)
+        private void StartCheckRail()
         {   
             resultCount = 0;
             railResults = new List<(GameObject, GameObject, string, MessageType, FixAction)>();
 
-            if (targetObject != null)
+            var scene = SceneManager.GetActiveScene();
+            var rootObjects = scene.GetRootGameObjects();
+            foreach (var obj in rootObjects)
             {
-                CheckRail(targetObject);
-            }
-            else
-            {
-                var scene = SceneManager.GetActiveScene();
-                var rootObjects = scene.GetRootGameObjects();
-                foreach (var obj in rootObjects)
-                {
-                    CheckRail(obj);
-                }
+                CheckRail(obj);
             }
         }
 
@@ -206,7 +198,7 @@ namespace omegaExpDesign.RBURTool
                 else
                 {
                     // prevはこちらに接続してない。つまり単方向じゃん
-                    // ポイントレールの場合、単方向接続しているのは正しいのでここでは簡易的にパスする(もうちょっと丁寧に検知してもいいかもしれない)
+                    // TODO:ポイントレールの場合、単方向になってるのは正しいが判定がムズイ
                     if (!isPointRail(rail)) {
                         railResults.Add((rail.gameObject, rail.prev.gameObject, "prevはあるけど、そのレールはこのレールに繋がっていない\n" + rail.prev.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
                     }
@@ -273,7 +265,7 @@ namespace omegaExpDesign.RBURTool
                     // ポイントレールの場合、単方向接続しているのは正しいのでここでは簡易的にパスする
                     if (!isPointRail(rail))
                     {
-                        railResults.Add((rail.gameObject, rail.next.gameObject, "nextはあるけど、そのレールはこのレールに繋がっていない\n" + rail.prev.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
+                        railResults.Add((rail.gameObject, rail.next?.gameObject, "nextはあるけど、そのレールはこのレールに繋がっていない\n" + rail.prev?.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
                     }
                 }
 
@@ -295,11 +287,11 @@ namespace omegaExpDesign.RBURTool
                 if (TryGetEndpoints(r.cinemachinePath, out var start, out var end))
                 {
                     //Debug.Log(r.gameObject.name + " start" + (position - start).magnitude + " end" + (position - end).magnitude);
-                    if ((position - start).magnitude < searchSuggestDistance && r.prev == null)
+                    if ((position - start).magnitude < searchSuggestDistance)
                     {
                         return (r, RailWaypoint.Start);
                     }
-                    if ((position - end).magnitude < searchSuggestDistance && r.next == null)
+                    if ((position - end).magnitude < searchSuggestDistance)
                     {
                         return (r, RailWaypoint.End);
                     }
