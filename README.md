@@ -1,5 +1,5 @@
 # RBUR-RailTools
-RBUR-RailToolsはVRChatのRigidBodyUdonRailwayレール作成向けUnityエディター拡張です。RBUR対応ワールド作成で大変な作業である、Rail_Script/CinemachinePath Waypointsの編集及び検査をアシストすることを主眼にしています
+RBUR-RailToolsはVRChatのRigidBodyUdonRailwayレール作成向けUnityエディター拡張です。RBUR対応ワールド作成作業のうち、Rail_Script/CinemachinePath Waypointsの編集及び検査をアシストすることを主眼にしています
 
 Unity Editor extensions for RigidBodyUdonRailway in the VRChat World SDK are used to create rails. They are designed for editing Rail_Script/CinemachinePath waypoints and make inspection easy.
 
