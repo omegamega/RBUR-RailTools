@@ -706,13 +706,13 @@ namespace omegaExpDesign.RigidBodyTrain
                 float segmentLength = 0f;
                 if (i > 0) {
                     prev = c.m_Waypoints[i - 1];
-                    segmentLength += GetSegmentLength(rail.cinemachinePath, i - 1);
+                    segmentLength += GetSegmentLengthWithoutY(rail.cinemachinePath, i - 1);
                 }
                 var next = c.m_Waypoints[i];
                 if (i < c.m_Waypoints.Length - 1)
                 {
                     next = c.m_Waypoints[i + 1];
-                    segmentLength += GetSegmentLength(rail.cinemachinePath, i);
+                    segmentLength += GetSegmentLengthWithoutY(rail.cinemachinePath, i);
                 }
 
                 var yDiff = next.position.y - prev.position.y;
@@ -739,7 +739,7 @@ namespace omegaExpDesign.RigidBodyTrain
 
             for (int i = 0; i < c.m_Waypoints.Length; i++)
             {
-                length += GetSegmentLength(rail.cinemachinePath, i);
+                length += GetSegmentLengthWithoutY(rail.cinemachinePath, i);
             }
             float lengthSum = 0;
             for (int i = 0; i < c.m_Waypoints.Length; i++)
@@ -748,8 +748,8 @@ namespace omegaExpDesign.RigidBodyTrain
                 var gradient = (endHeight - startHeight) / length;
                 var currentVectorXZ = new Vector3(current.tangent.x, 0, current.tangent.z);
 
-                lengthSum += GetSegmentLength(rail.cinemachinePath, i);
                 var currentHeight = (endHeight - startHeight) / length * lengthSum + startHeight;
+                lengthSum += GetSegmentLengthWithoutY(rail.cinemachinePath, i);
                 //if (i == c.m_Waypoints.Length - 1) currentHeight = endHeight;
                 c.m_Waypoints[i].position.y = currentHeight;
                 c.m_Waypoints[i].tangent.y = gradient * currentVectorXZ.magnitude;
@@ -917,7 +917,7 @@ namespace omegaExpDesign.RigidBodyTrain
                 p.m_Waypoints = wp;
             }
         }
-        private float GetSegmentLength(CinemachinePathBase path, int index, int steps = 50)
+        private float GetSegmentLengthWithoutY(CinemachinePathBase path, int index, int steps = 50)
         {
             if (path == null) return 0f;
             if (index < 0 || index >= path.PathLength) return 0f;
@@ -932,7 +932,9 @@ namespace omegaExpDesign.RigidBodyTrain
             {
                 float t = Mathf.Lerp(start, end, (float)i / steps);
                 Vector3 curr = path.EvaluatePosition(t);
-                length += Vector3.Distance(prev, curr);
+                Vector3 diff = prev - curr;
+                diff.y = 0;
+                length += diff.magnitude;
                 prev = curr;
             }
 
