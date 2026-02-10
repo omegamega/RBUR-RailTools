@@ -40,7 +40,14 @@ namespace omegaExpDesign.RBURTool
         {
             var e = new GUIStyle(EditorStyles.label);
             e.fontSize = 18;
-            GUILayout.Label(new GUIContent("Rail Checker", "レールの接続を精査して、問題がありそうな箇所を列挙します"), e);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label(new GUIContent("Rail Checker", "レールの接続を精査して、問題がありそうな箇所を列挙します"), e);
+                if (GUILayout.Button("Wikiを開く/Show Wiki", EditorStyles.linkLabel))
+                {
+                    Application.OpenURL("https://github.com/omegamega/RBUR-RailTools/wiki/RailSnapTool");
+                }
+            }
 
             EditorGUILayout.LabelField("prev,nextのないレールが見つかった時、この距離内のレールをサジェストします");
             searchSuggestDistance = EditorGUILayout.FloatField("未接続レール探索距離", searchSuggestDistance);
@@ -80,7 +87,7 @@ namespace omegaExpDesign.RBURTool
                                 EditorGUIUtility.PingObject(r.targetRail.gameObject);
                             }
                         }
-                        /*
+                        /* 
                         if(r.fixAction != FixAction.None)
                         {
                             if (GUILayout.Button("AutoFix(TODO)", GUILayout.Width(80)))
@@ -118,7 +125,7 @@ namespace omegaExpDesign.RBURTool
         {
             if(root){
                 Rail_Script rail = targetObject.GetComponent<Rail_Script>();
-                if (rail != null)
+                if (rail != null && targetObject.activeInHierarchy)
                 {
                     CheckRailAndWaypoint(rail);
                 }
@@ -127,7 +134,7 @@ namespace omegaExpDesign.RBURTool
             foreach (Transform child in targetObject.transform)
             {
                 Rail_Script rail = child.GetComponent<Rail_Script>();
-                if (rail != null)
+                if (rail != null && targetObject.activeInHierarchy)
                 {
                     CheckRailAndWaypoint(rail);
                 }
@@ -140,8 +147,35 @@ namespace omegaExpDesign.RBURTool
         {
              TryGetEndpoints(rail.cinemachinePath, out var start, out var end);
 
-            if (start == null || end == null) return;
-        
+            // 何故かCinemachinePathの始点終点が取れないレールがある
+            if (start == null || end == null)
+            {
+                railResults.Add((rail.gameObject, null, "レールのCinemachinePathが取得できません。\nPathがセットされてないのかも？", MessageType.Error, FixAction.None));
+                return;
+            }
+
+            // XまたはZスケールが反転(ミラー)しているレールはRBURでは正常に動作しない
+            var v = rail.transform.lossyScale;
+            if(v.x < 0 || v.z < 0)
+            {
+                railResults.Add((rail.gameObject, null, "レールのXまたはZスケールがマイナスになっています", MessageType.Error, FixAction.None));
+            }
+            
+            // 単一のGameObjectに複数のRail_Scriptが付いているのは良くない
+            {
+                var siblingRails = rail.gameObject.GetComponents<Rail_Script>();
+                if(siblingRails.Length > 1)
+                {
+                    railResults.Add((rail.gameObject, null, "単一のGameObjectに複数のRail_Scriptが付いてます。\nGameObjectとRail_Scriptは1:1対応しない場合、挙動は保証できません。", MessageType.Error, FixAction.None));
+                }
+            }
+
+            // Rail_ScriptとそのCinemachinePathが異なるGameObjectについているのは良くない
+            if(rail.gameObject != rail.cinemachinePath.gameObject)
+            {
+                railResults.Add((rail.gameObject, null, "Rail_ScriptとCinemachinePathが異なるGameObjectについています。\nGameObjectとRail_Scriptが別のGameObjectについている場合、挙動は保証できません。", MessageType.Error, FixAction.None));
+            }
+
             if (rail.prev == null)
             {
                 // prevがない
@@ -199,7 +233,7 @@ namespace omegaExpDesign.RBURTool
                 {
                     // prevはこちらに接続してない。つまり単方向じゃん
                     // TODO:ポイントレールの場合、単方向になってるのは正しいが判定がムズイ
-                    if (!isPointRail(rail)) {
+                    if (!isSwitchableRail(rail)) {
                         railResults.Add((rail.gameObject, rail.prev.gameObject, "prevはあるけど、そのレールはこのレールに繋がっていない\n" + rail.prev.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
                     }
                 }
@@ -263,7 +297,7 @@ namespace omegaExpDesign.RBURTool
                 {
                     // nextはこちらに接続してない。つまり単方向じゃん
                     // ポイントレールの場合、単方向接続しているのは正しいのでここでは簡易的にパスする
-                    if (!isPointRail(rail))
+                    if (!isSwitchableRail(rail))
                     {
                         railResults.Add((rail.gameObject, rail.next?.gameObject, "nextはあるけど、そのレールはこのレールに繋がっていない\n" + rail.prev?.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
                     }
@@ -300,15 +334,54 @@ namespace omegaExpDesign.RBURTool
             return (null, RailWaypoint.None);
         }
 
-        private bool isPointRail(Rail_Script rail)
+        // Switchableレール(独自用語)は、Point/TurnTable/PointLever_Setter(5.0以降)のような、接続先が切り替わるレール。
+        private bool isSwitchableRail(Rail_Script rail)
         {
-            foreach (var point in GameObject.FindObjectsOfType<Point_Script>()){
-                if(point.pointPrevRail == rail || point.pointPrevRail_sub == rail || point.pointNextRail1 == rail || point.pointNextRail2 == rail)
+            // Point_Script
+            foreach (var point in GameObject.FindObjectsOfType<Point_Script>())
+            {
+                if (point.pointPrevRail == rail || point.pointPrevRail_sub == rail || point.pointNextRail1 == rail || point.pointNextRail2 == rail)
                 {
                     return true;
                 }
             }
+
+            // TurnTable_Contoller
+            foreach (var turnTable in GameObject.FindObjectsOfType<TurnTable_Controller>())
+            {
+                if (turnTable.targets.Contains(rail) || turnTable.mine == rail)
+                {
+                    return true;
+                }
+            }
+
+            // PointLever_SetterはRBUR 5.0.0以降の実装なので、Reflectionを使ってRBUR b3.4との互換性を確保した
+            Type t = FindType("frou01.RigidBodyTrain.PointLever_Setter");
+            if (t != null)
+            {
+                foreach (var point in GameObject.FindObjectsByType(t, FindObjectsSortMode.None))
+                {
+                    FieldInfo from1Info = t.GetField("from1", BindingFlags.Public | BindingFlags.Instance);
+                    FieldInfo from2Info = t.GetField("from2", BindingFlags.Public | BindingFlags.Instance);
+                    FieldInfo to1Info = t.GetField("to1", BindingFlags.Public | BindingFlags.Instance);
+                    FieldInfo to2Info = t.GetField("to2", BindingFlags.Public | BindingFlags.Instance);
+                    if ((Rail_Script)from1Info.GetValue(point) == rail || (Rail_Script)from2Info.GetValue(point) == rail || (Rail_Script)to1Info.GetValue(point) == rail || (Rail_Script)to2Info.GetValue(point) == rail)
+                    {
+                        return true;
+                    }
+                }
+            }
             return false;
+        }
+        static Type FindType(string fullName)
+        {
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var t = asm.GetType(fullName);
+                if (t != null)
+                    return t;
+            }
+            return null;
         }
         private void CheckWaypoints()
         {
@@ -356,6 +429,8 @@ namespace omegaExpDesign.RBURTool
         private bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end)
         {
             start = end = Vector3.zero;
+
+            if (!path) return false;
 
             if (path is CinemachinePath p && p.m_Waypoints.Length > 0)
             {

@@ -63,107 +63,107 @@ namespace omegaExpDesign.RigidBodyTrain
             // Waypointの編集検知方法がこれしか見つからなかったので、この方法で検知している
             if (!isWaypointSnapActive) return mods;
 
-            var rail = Selection.activeGameObject?.GetComponent<Rail_Script>();
-            if (rail == null) return mods;
+            var activeRail = Selection.activeGameObject?.GetComponent<Rail_Script>();
+            if (activeRail == null) return mods;
 
             foreach (var mod in mods)
             {
-                if (mod.currentValue.target is CinemachinePathBase && rail.cinemachinePath == mod.currentValue.target)
+                if (activeRail.cinemachinePath == mod.currentValue.target) continue;
+
+                if (!(mod.currentValue.target is CinemachinePathBase)) continue;
+                //Debug.Log($"OnMod {mod.previousValue.target.ToString()} {mod.currentValue.target.ToString()}");
+                var current_st = (GetWaypointStartPosition((CinemachinePathBase)mod.currentValue.target));
+                if (current_st != prevWaypointStartPos && tempCamera)
                 {
-                    //Debug.Log($"OnMod {mod.previousValue.target.ToString()} {mod.currentValue.target.ToString()}");
-                    var current_st = (GetWaypointStartPosition((CinemachinePathBase)mod.currentValue.target));
-                    if (current_st != prevWaypointStartPos && tempCamera)
+                    prevWaypointStartPos = current_st;
+
+                    if (autoWaypointConnect)
                     {
-                        prevWaypointStartPos = current_st;
-
-                        if (autoWaypointConnect)
+                        // まずstart側=prev側が接続されていれば、接続を外す
+                        if (activeRail.prev)
                         {
-                            // まずstart側=prev側が接続されていれば、接続を外す
-                            if (rail.prev)
+                            if (activeRail.prev.prev == activeRail)
                             {
-                                if (rail.prev.prev == rail)
-                                {
-                                    Undo.RecordObject(rail.prev, "Disconnect rail");
-                                    rail.prev.prev = null;
-                                }
-                                if (rail.prev.next == rail)
-                                {
-                                    Undo.RecordObject(rail.prev, "Disconnect rail");
-                                    rail.prev.next = null;
-                                }
-                                Undo.RecordObject(rail, "Disconnect rail");
-                                rail.prev = null;
+                                Undo.RecordObject(activeRail.prev, "Disconnect rail");
+                                activeRail.prev.prev = null;
                             }
-                        }
-
-                        // スナップ対象レールを更新
-                        OnSelectionChanged();
-
-                        // 改めてスナップできる場所を探す
-                        Vector3 pos = rail.cinemachinePath.EvaluatePositionAtUnit(0f, CinemachinePathBase.PositionUnits.Normalized);
-                        var result = searchSnapPosition(tempCamera, pos);       // 本当はsceneView.cameraを使いたいがここからは取れなさそうなので雑に保存しておいたカメラを使う
-                        if (result.screenDistance < snapWaypointDistance)
-                        {
-                            // スナップする
-                            Vector3 v = GetWaypointStartPosition(rail.cinemachinePath);
-                            v += rail.gameObject.transform.InverseTransformVector(result.diffDistance);
-                            SetWaypointStartPosition(rail.cinemachinePath, v);
-                        }
-
-                        if (autoWaypointConnect)
-                        {
-                            foreach (var otherRail in otherRails)
+                            if (activeRail.prev.next == activeRail)
                             {
-                                TryConnectRail(rail, otherRail);
+                                Undo.RecordObject(activeRail.prev, "Disconnect rail");
+                                activeRail.prev.next = null;
                             }
+                            Undo.RecordObject(activeRail, "Disconnect rail");
+                            activeRail.prev = null;
                         }
                     }
 
-                    var current_end = (GetWaypointEndPosition((CinemachinePathBase)mod.currentValue.target));
-                    if (current_end != prevWaypointEndPos)
+                    // スナップ対象レールを更新
+                    OnSelectionChanged();
+
+                    // 改めてスナップできる場所を探す
+                    Vector3 pos = activeRail.cinemachinePath.EvaluatePositionAtUnit(0f, CinemachinePathBase.PositionUnits.Normalized);
+                    var result = searchSnapPosition(tempCamera, pos);       // 本当はsceneView.cameraを使いたいがここからは取れなさそうなので雑に保存しておいたカメラを使う
+                    if (result.screenDistance < snapWaypointDistance)
                     {
-                        prevWaypointEndPos = current_end;
+                        // スナップする
+                        Vector3 v = GetWaypointStartPosition(activeRail.cinemachinePath);
+                        v += activeRail.gameObject.transform.InverseTransformVector(result.diffDistance);
+                        SetWaypointStartPosition(activeRail.cinemachinePath, v);
+                    }
 
-                        if (autoWaypointConnect)
+                    if (autoWaypointConnect)
+                    {
+                        foreach (var otherRail in otherRails)
                         {
-                            // まずend側=next側が接続されていれば、接続を外す
-                            if (rail.next)
-                            {
-                                if (rail.next.prev == rail)
-                                {
-                                    Undo.RecordObject(rail.next, "Disconnect rail");
-                                    rail.next.prev = null;
-                                }
-                                if (rail.next.next == rail)
-                                {
-                                    Undo.RecordObject(rail.next, "Disconnect rail");
-                                    rail.next.next = null;
-                                }
-                                Undo.RecordObject(rail, "Disconnect rail");
-                                rail.next = null;
-                            }
+                            TryConnectRail(activeRail, otherRail);
                         }
+                    }
+                }
 
-                        // スナップ対象レールを更新
-                        OnSelectionChanged();
+                var current_end = (GetWaypointEndPosition((CinemachinePathBase)mod.currentValue.target));
+                if (current_end != prevWaypointEndPos)
+                {
+                    prevWaypointEndPos = current_end;
 
-                        // 改めてスナップできる場所を探す
-                        Vector3 pos = rail.cinemachinePath.EvaluatePositionAtUnit(1f, CinemachinePathBase.PositionUnits.Normalized);
-                        var result = searchSnapPosition(tempCamera, pos);       // 本当はsceneView.cameraを使いたいがここからは取れなさそうなので雑に保存しておいたカメラを使う
-                        if (result.screenDistance < snapWaypointDistance)
+                    if (autoWaypointConnect)
+                    {
+                        // まずend側=next側が接続されていれば、接続を外す
+                        if (activeRail.next)
                         {
-                            // スナップする
-                            Vector3 v = GetWaypointEndPosition(rail.cinemachinePath);
-                            v += rail.gameObject.transform.InverseTransformVector(result.diffDistance);
-                            SetWaypointEndPosition(rail.cinemachinePath, v);
-                        }
-
-                        if (autoWaypointConnect)
-                        {
-                            foreach (var otherRail in otherRails)
+                            if (activeRail.next.prev == activeRail)
                             {
-                                TryConnectRail(rail, otherRail);
+                                Undo.RecordObject(activeRail.next, "Disconnect rail");
+                                activeRail.next.prev = null;
                             }
+                            if (activeRail.next.next == activeRail)
+                            {
+                                Undo.RecordObject(activeRail.next, "Disconnect rail");
+                                activeRail.next.next = null;
+                            }
+                            Undo.RecordObject(activeRail, "Disconnect rail");
+                            activeRail.next = null;
+                        }
+                    }
+
+                    // スナップ対象レールを更新
+                    OnSelectionChanged();
+
+                    // 改めてスナップできる場所を探す
+                    Vector3 pos = activeRail.cinemachinePath.EvaluatePositionAtUnit(1f, CinemachinePathBase.PositionUnits.Normalized);
+                    var result = searchSnapPosition(tempCamera, pos);       // 本当はsceneView.cameraを使いたいがここからは取れなさそうなので雑に保存しておいたカメラを使う
+                    if (result.screenDistance < snapWaypointDistance)
+                    {
+                        // スナップする
+                        Vector3 v = GetWaypointEndPosition(activeRail.cinemachinePath);
+                        v += activeRail.gameObject.transform.InverseTransformVector(result.diffDistance);
+                        SetWaypointEndPosition(activeRail.cinemachinePath, v);
+                    }
+
+                    if (autoWaypointConnect)
+                    {
+                        foreach (var otherRail in otherRails)
+                        {
+                            TryConnectRail(activeRail, otherRail);
                         }
                     }
                 }
@@ -183,6 +183,17 @@ namespace omegaExpDesign.RigidBodyTrain
 
             var e = new GUIStyle(EditorStyles.label);
             e.fontSize = 18;
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label(new GUIContent("RailSnapTool", "レール敷設/編集支援ツール"), e);
+                if (GUILayout.Button("Wikiを開く/Show Wiki", EditorStyles.linkLabel))
+                {
+                    Application.OpenURL("https://github.com/omegamega/RBUR-RailTools/wiki/RailSnapTool");
+                }
+            }
+
+            EditorGUILayout.Space();
+
             GUILayout.Label(new GUIContent("GameObject Snap", "レール付きのGameObjectを選択、ドラッグした時にスナップさせます"), e);
             isSnapActive = EditorGUILayout.Toggle(new GUIContent("Enable", "GameObjectスナップを有効にする"), isSnapActive);
             using (new EditorGUI.DisabledScope(!isSnapActive))
@@ -245,8 +256,8 @@ namespace omegaExpDesign.RigidBodyTrain
                 }
 
                 EditorGUILayout.Space();
-                GUILayout.Label(new GUIContent("Cant", "Waypoint.rollを設定します"));
-                easyCantAngle = EditorGUILayout.FloatField(new GUIContent("Cant Angle", "カントの傾斜"), easyCantAngle);
+                GUILayout.Label(new GUIContent("Cant", "カント、Waypoint.rollを設定します"));
+                easyCantAngle = EditorGUILayout.FloatField(new GUIContent("Cant Angle", "カントの傾斜(単位・度)"), easyCantAngle);
                 straightThreshold = EditorGUILayout.FloatField(new GUIContent("Cant Threshold", "曲線と見なすカーブ角度"), straightThreshold);
                 if (GUILayout.Button("カントを設定する(簡易)"))
                 {
@@ -316,30 +327,28 @@ namespace omegaExpDesign.RigidBodyTrain
                     }
                     else
                     {
-                        if (Vector3.Cross(sv, ov).z > 0)
+                        if (Vector3.Cross(sv, ov).y > 0)
                         {
                             angleDiff = -Vector3.Angle(ov, sv);
                         }
-                        else
+                        else 
                         {
-                            angleDiff = Vector3.Angle(ov, sv);
+                            angleDiff = -Vector3.Angle(ov, sv);
                         }
                     }
                     
                 }
 
-                using (new EditorGUI.DisabledScope(connectionCount != 1 && Selection.count == 1))
+                using (new EditorGUI.DisabledScope(connectionCount != 1 || Selection.count == 0))
                 {
                     if (GUILayout.Button("接続が1箇所の時、接続点のTangentに合わせて選択オブジェクトを回す"))
                     {
                         // 選択GameObjectを動かす(個々のレールではなく)
-                        // TODO:複数選択ドラッグと同様に、同一階層制限はあっていい(がそんなにパターンは多くなさそう？破綻しても許せるそうな気もする)
                         foreach (var obj in Selection.gameObjects)
                         {
-                            Undo.RecordObject(obj, "snap rotation/translate");
-                            obj.transform.Translate(-connectionPosition, Space.World);
-                            obj.transform.rotation *= Quaternion.AngleAxis(angleDiff, Vector3.up);
-                            obj.transform.Translate(connectionPosition, Space.World);
+                            Undo.RecordObject(obj.transform, "snap rotation/translate");
+                            obj.transform.RotateAround(connectionPosition,Vector3.up,angleDiff);
+                            EditorUtility.SetDirty(obj.transform);
                         }
                     }
                 }
@@ -465,8 +474,9 @@ namespace omegaExpDesign.RigidBodyTrain
         }
         private void SnapGameObjectOnSceneGUI(SceneView sceneView)
         {
-            // 階層が違うオブジェクトを選んでる場合は警告表示をしてDisableにする
             if(selectionRails.Count == 0) { return; }   // レールが含まれなかったらそもそも何もしない
+
+            // 階層が違うオブジェクトを選んでる場合は警告表示をしてDisableにする
             bool isAllSibling = true;
             var activeObj = Selection.activeGameObject;
             foreach(var obj in Selection.gameObjects)
@@ -608,17 +618,21 @@ namespace omegaExpDesign.RigidBodyTrain
                     && (rail.cinemachinePath.EvaluatePositionAtUnit(0f, u) - otherRail.cinemachinePath.EvaluatePositionAtUnit(0f, u)).magnitude < autoConnectDistance)
                 {
                     Undo.RecordObject(rail, "Connect rail");
-                    rail.prev = otherRail;
                     Undo.RecordObject(otherRail, "Connect rail");
+                    rail.prev = otherRail;
                     otherRail.prev = rail;
+                    EditorUtility.SetDirty(rail);
+                    EditorUtility.SetDirty(otherRail);
                 }
                 if (!otherRail.next
                     && (rail.cinemachinePath.EvaluatePositionAtUnit(0f, u) - otherRail.cinemachinePath.EvaluatePositionAtUnit(1f, u)).magnitude < autoConnectDistance)
                 {
                     Undo.RecordObject(rail, "Connect rail");
-                    rail.prev = otherRail;
                     Undo.RecordObject(otherRail, "Connect rail");
+                    rail.prev = otherRail;
                     otherRail.next = rail;
+                    EditorUtility.SetDirty(rail);
+                    EditorUtility.SetDirty(otherRail);
                 }
             }
             if (!rail.next)
@@ -627,17 +641,21 @@ namespace omegaExpDesign.RigidBodyTrain
                     && (rail.cinemachinePath.EvaluatePositionAtUnit(1f, u) - otherRail.cinemachinePath.EvaluatePositionAtUnit(0f, u)).magnitude < autoConnectDistance)
                 {
                     Undo.RecordObject(rail, "Connect rail");
-                    rail.next = otherRail;
                     Undo.RecordObject(otherRail, "Connect rail");
+                    rail.next = otherRail;
                     otherRail.prev = rail;
+                    EditorUtility.SetDirty(rail);
+                    EditorUtility.SetDirty(otherRail);
                 }
                 if (!otherRail.next
                     && (rail.cinemachinePath.EvaluatePositionAtUnit(1f, u) - otherRail.cinemachinePath.EvaluatePositionAtUnit(1f, u)).magnitude < autoConnectDistance)
                 {
                     Undo.RecordObject(rail, "Connect rail");
-                    rail.next = otherRail;
                     Undo.RecordObject(otherRail, "Connect rail");
+                    rail.next = otherRail;
                     otherRail.next = rail;
+                    EditorUtility.SetDirty(rail);
+                    EditorUtility.SetDirty(otherRail);
                 }
             }
         }
@@ -648,7 +666,7 @@ namespace omegaExpDesign.RigidBodyTrain
 
             if(rail.prev.next == rail)
             {
-                Undo.RecordObject(rail, "Correct prev waypoint tangent");
+                Undo.RecordObject(rail.cinemachinePath, "Correct prev waypoint tangent");
                 Debug.Log("Correct prev waypoint tangent");
                 // 接続しているレールから見て、next側で接続しているなら、end側(1f)のタンジェントを持ってくる
                 var v = rail.prev.cinemachinePath.EvaluateTangentAtUnit(1f, CinemachinePathBase.PositionUnits.Normalized);
@@ -657,7 +675,7 @@ namespace omegaExpDesign.RigidBodyTrain
             }
             if (rail.prev.prev == rail)
             {
-                Undo.RecordObject(rail, "Correct prev waypoint tangent");
+                Undo.RecordObject(rail.cinemachinePath, "Correct prev waypoint tangent");
                 Debug.Log("Correct next waypoint tangent");
                 // 接続しているレールから見て、prev側で接続しているなら、start側(0f)のタンジェントを持ってくる
                 var v = rail.prev.cinemachinePath.EvaluateTangentAtUnit(0f, CinemachinePathBase.PositionUnits.Normalized);
@@ -791,27 +809,31 @@ namespace omegaExpDesign.RigidBodyTrain
         // 選択内容が変更されたら、スナップすべき座標リストを計算しなおす
         private void OnSelectionChanged()
         {
-            List<Rail_Script> selectRails = new List<Rail_Script>();
+            // 選択済みレールを列挙する
+            selectionRails.Clear();
             foreach (var selectionObj in Selection.gameObjects)
             {
                 Rail_Script rail = selectionObj.GetComponent<Rail_Script>();
-                if (rail)
-                {
-                    selectRails.Add(rail);
-                }
+
+                // Rail_Scriptが重複してついてるGameObjectがありえる。その場合は無効扱い
+                if (rail && rail.gameObject.GetComponents<Rail_Script>().Length == 1) selectionRails.Add(rail);
                 foreach (var childRail in selectionObj.GetComponentsInChildren<Rail_Script>())
                 {
-                        selectRails.Add(childRail);
+                    // Rail_Scriptが重複してついてるGameObjectがあり、その場合は無効扱い
+                    if(childRail.gameObject.GetComponents<Rail_Script>().Length == 1) selectionRails.Add(childRail);
                 }
             }
 
-            selectionSnapPos = new List<Vector3>();
-            otherSnapPos = new List<Vector3>();
-            selectionRails = new List<Rail_Script>();
-            otherRails = new List<Rail_Script>();
+            selectionSnapPos.Clear();
+            otherSnapPos.Clear();
+            otherRails.Clear();
             foreach (var rail in GameObject.FindObjectsOfType<Rail_Script>())
             {
-                if (selectRails.Contains(rail))
+                if (!rail.gameObject.activeInHierarchy) continue;
+                if (!rail.cinemachinePath) continue;
+                if (rail.gameObject.GetComponents<Rail_Script>().Length != 1) continue;
+
+                if (selectionRails.Contains(rail))
                 {
                     // 選択しているなら、それはスナップ元座標になる
                     if (!rail.prev)
@@ -822,7 +844,6 @@ namespace omegaExpDesign.RigidBodyTrain
                     {
                         selectionSnapPos.Add(rail.cinemachinePath.EvaluatePositionAtUnit(1f, Cinemachine.CinemachinePathBase.PositionUnits.Normalized));
                     }
-                    selectionRails.Add(rail);
                 }
                 else
                 {
@@ -839,7 +860,7 @@ namespace omegaExpDesign.RigidBodyTrain
                 }
             }
 
-            // アクティブなCinemachineのWaypointもメモっておく(ドラッグ検知のため)
+            // アクティブなCinemachineのWaypointもメモっておく(waypointのドラッグ検知のため)
             var c = Selection.activeGameObject?.GetComponent<CinemachinePathBase>();
             if(c != null)
             {
