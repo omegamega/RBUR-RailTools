@@ -161,7 +161,7 @@ namespace omegaExpDesign.RBURTool
             var v = rail.transform.lossyScale;
             if(v.x < 0 || v.z < 0)
             {
-                railResults.Add((rail.gameObject, null, "レールのXまたはZスケールがマイナスになっています", MessageType.Error, FixAction.None));
+                railResults.Add((rail.gameObject, null, "レールのXまたはZスケールがマイナスになっています\nXまたはZをマイナスにした反転レールでは車両は正常に走りません", MessageType.Error, FixAction.None));
             }
             
             // 単一のGameObjectに複数のRail_Scriptが付いているのは良くない
