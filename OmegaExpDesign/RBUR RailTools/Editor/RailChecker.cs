@@ -214,7 +214,7 @@ namespace omegaExpDesign.RBURTool
             else
             {
                 // prevはある。prevレールはこのレールにちゃんと繋がっているのか
-                TryGetEndpoints(rail.prev.cinemachinePath, out var prevStart, out var prevEnd);
+                TryGetEndpoints(rail.prev.cinemachinePath, out var prevStart, out var prevEnd, out var prevStartTan, out var prevEndTan);
                 if (rail.prev.prev == rail)
                 {
                     // prevレールはprev(start)側でこのレールと接続しているらしい
@@ -239,6 +239,27 @@ namespace omegaExpDesign.RBURTool
                     // TODO:ポイントレールの場合、単方向になってるのは正しいが判定がムズイ
                     if (!isSwitchableRail(rail)) {
                         railResults.Add((rail.gameObject, rail.prev.gameObject, "prevはあるけど、そのレールはこのレールに繋がっていない\n" + rail.prev.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
+                    }
+                }
+
+                //グラフ構造チェックと独立して角度差チェックを実施
+                if (!isTurnTableRail(rail))//自身がターンテーブルな場合、角度差チェックはしなし
+                {
+                    if ((prevStart - start).magnitude < (prevEnd - start).magnitude)
+                    {
+                        if (Vector3.Dot(prevStartTan, startTan) > -connectedDot)
+                        {
+                            // 折れている
+                            railResults.Add((rail.gameObject, rail.prev.gameObject, "prevと接続している部分の角度差が大きすぎる", MessageType.Error, FixAction.None));
+                        }
+                    }
+                    else
+                    {
+                        if (Vector3.Dot(prevEndTan, startTan) > -connectedDot)
+                        {
+                            // 折れている
+                            railResults.Add((rail.gameObject, rail.prev.gameObject, "prevと接続している部分の角度差が大きすぎる", MessageType.Error, FixAction.None));
+                        }
                     }
                 }
             }
@@ -279,7 +300,7 @@ namespace omegaExpDesign.RBURTool
             else
             {
                 // nextはある。nextレールはこのレールにちゃんと繋がっているのか
-                TryGetEndpoints(rail.next.cinemachinePath, out var prevStart, out var prevEnd);
+                TryGetEndpoints(rail.next.cinemachinePath, out var prevStart, out var prevEnd, out var prevStartTan, out var prevEndTan);
                 if (rail.next.prev == rail)
                 {
                     // nextレールはprev(start)側でこのレールと接続しているらしい
@@ -307,6 +328,26 @@ namespace omegaExpDesign.RBURTool
                     }
                 }
 
+                //グラフ構造チェックと独立して角度差チェックを実施
+                if (!isTurnTableRail(rail))//自身がターンテーブルな場合、角度差チェックはしなし
+                {
+                    if ((prevStart - end).magnitude < (prevEnd - end).sqrMagnitude)
+                    {
+                        if (Vector3.Dot(prevStartTan, endTan) > -connectedDot)
+                        {
+                            // 折れている
+                            railResults.Add((rail.gameObject, rail.prev.gameObject, "prevと接続している部分の角度差が大きすぎる", MessageType.Error, FixAction.None));
+                        }
+                    }
+                    else
+                    {
+                        if (Vector3.Dot(prevEndTan, endTan) > -connectedDot)
+                        {
+                            // 折れている
+                            railResults.Add((rail.gameObject, rail.prev.gameObject, "nextと接続している部分の角度差が大きすぎる", MessageType.Error, FixAction.None));
+                        }
+                    }
+                }
             }
 
 
@@ -351,13 +392,7 @@ namespace omegaExpDesign.RBURTool
             }
 
             // TurnTable_Contoller
-            foreach (var turnTable in GameObject.FindObjectsOfType<TurnTable_Controller>())
-            {
-                if (turnTable.targets.Contains(rail) || turnTable.mine == rail)
-                {
-                    return true;
-                }
-            }
+            if(isTurnTableRail(rail))return true;
 
             // PointLever_SetterはRBUR 5.0.0以降の実装なので、Reflectionを使ってRBUR b3.4との互換性を確保した
             Type t = FindType("frou01.RigidBodyTrain.PointLever_Setter");
@@ -373,6 +408,17 @@ namespace omegaExpDesign.RBURTool
                     {
                         return true;
                     }
+                }
+            }
+            return false;
+        }
+        private bool isTurnTableRail(Rail_Script rail)
+        {
+            foreach (var turnTable in GameObject.FindObjectsOfType<TurnTable_Controller>())
+            {
+                if (turnTable.targets.Contains(rail) || turnTable.mine == rail)
+                {
+                    return true;
                 }
             }
             return false;
