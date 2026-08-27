@@ -26,6 +26,7 @@ namespace omegaExpDesign.RBURTool
 
         private float searchSuggestDistance = 1.0f;    // 近いレールを探す範囲
         private float connectedDistance = 0.01f;      // 正しく接続されている判定をするレール終端距離
+        private float connectedDot = 0.86602540378f;      // 正しく接続されている判定をするレール内積
         private List<(CinemachinePathBase a, CinemachinePathBase b, float distance)> results;
         private List<(GameObject rail, GameObject targetRail, string message, MessageType messageType,FixAction fixAction)> railResults;
         private int resultCount = 0;
@@ -148,7 +149,7 @@ namespace omegaExpDesign.RBURTool
 
         private void CheckRailAndWaypoint(Rail_Script rail)
         {
-             TryGetEndpoints(rail.cinemachinePath, out var start, out var end);
+             TryGetEndpoints(rail.cinemachinePath, out var start, out var end,out Vector3 startTan,out Vector3 endTan);
 
             // 何故かCinemachinePathの始点終点が取れないレールがある
             if (start == null || end == null)
@@ -183,7 +184,7 @@ namespace omegaExpDesign.RBURTool
             {
                 // prevがない
                 // prev/path最初から近いレールを探す
-                var ret = searchNearRailend(start, rail);
+                var ret = searchNearRailend(start, startTan, rail);
                 if (ret.rail == null)
                 {
                     // prev/path最初の近くにレール終端がない
@@ -247,7 +248,7 @@ namespace omegaExpDesign.RBURTool
             {
                 // nextがない
                 // next/path終端から近いレールを探す
-                var ret = searchNearRailend(end, rail);
+                var ret = searchNearRailend(end, endTan, rail);
                 if (ret.rail == null)
                 {
                     // nextの近くにレール終端がない
@@ -313,7 +314,7 @@ namespace omegaExpDesign.RBURTool
             return;
         }
 
-        private (Rail_Script rail, RailWaypoint waypoint) searchNearRailend(Vector3 position, Rail_Script exclusion = null)
+        private (Rail_Script rail, RailWaypoint waypoint) searchNearRailend(Vector3 position,Vector3 tangent,Rail_Script exclusion = null)
         {
             // 他のレールのエンドポイントを探す
             var allRails = GameObject.FindObjectsOfType<Rail_Script>();
@@ -321,14 +322,14 @@ namespace omegaExpDesign.RBURTool
             {
                 if (r == exclusion) continue;
 
-                if (TryGetEndpoints(r.cinemachinePath, out var start, out var end))
+                if (TryGetEndpoints(r.cinemachinePath, out Vector3 start, out Vector3 end, out Vector3 startTan, out Vector3 endTan))
                 {
                     //Debug.Log(r.gameObject.name + " start" + (position - start).magnitude + " end" + (position - end).magnitude);
-                    if ((position - start).magnitude < searchSuggestDistance)
+                    if ((position - start).magnitude < searchSuggestDistance && Vector3.Dot(tangent, startTan) < -connectedDot)
                     {
                         return (r, RailWaypoint.Start);
                     }
-                    if ((position - end).magnitude < searchSuggestDistance)
+                    if ((position - end).magnitude < searchSuggestDistance && Vector3.Dot(tangent, endTan) < -connectedDot)
                     {
                         return (r, RailWaypoint.End);
                     }
@@ -428,23 +429,32 @@ namespace omegaExpDesign.RBURTool
 
         /// <summary>
         /// CinemachinePath / CinemachineSmoothPath の両端点を取得する
+        /// Tangentは常に内向きにする
         /// </summary>
         private bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end)
         {
-            start = end = Vector3.zero;
+            return TryGetEndpoints(path, out start, out end, out Vector3 startTan,out Vector3 endTan);
+        }
+        private bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end, out Vector3 startTan, out Vector3 endTan)
+        {
+            start = end = startTan = endTan = Vector3.zero;
 
             if (!path) return false;
 
             if (path is CinemachinePath p && p.m_Waypoints.Length > 0)
             {
                 start = p.transform.TransformPoint(p.m_Waypoints[0].position);
+                startTan = p.transform.TransformDirection(p.m_Waypoints[0].tangent.normalized);
                 end = p.transform.TransformPoint(p.m_Waypoints[p.m_Waypoints.Length - 1].position);
+                endTan = -p.transform.TransformDirection(p.m_Waypoints[p.m_Waypoints.Length - 1].tangent.normalized);
                 return true;
             }
             else if (path is CinemachineSmoothPath sp && sp.m_Waypoints.Length > 0)
             {
                 start = sp.transform.TransformPoint(sp.m_Waypoints[0].position);
                 end = sp.transform.TransformPoint(sp.m_Waypoints[sp.m_Waypoints.Length - 1].position);
+                startTan = sp.transform.TransformDirection(sp.EvaluateLocalTangent(0).normalized);
+                endTan = -sp.transform.TransformDirection(sp.EvaluateLocalTangent(sp.m_Waypoints.Length - 1).normalized);
                 return true;
             }
             return false;
