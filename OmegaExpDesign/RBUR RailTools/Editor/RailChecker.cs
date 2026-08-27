@@ -324,7 +324,7 @@ namespace omegaExpDesign.RBURTool
                     // ポイントレールの場合、単方向接続しているのは正しいのでここでは簡易的にパスする
                     if (!isSwitchableRail(rail))
                     {
-                        railResults.Add((rail.gameObject, rail.next?.gameObject, "nextはあるけど、そのレールはこのレールに繋がっていない\n" + rail.prev?.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
+                        railResults.Add((rail.gameObject, rail.next?.gameObject, "nextはあるけど、そのレールはこのレールに繋がっていない\n" + rail.next?.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
                     }
                 }
 
