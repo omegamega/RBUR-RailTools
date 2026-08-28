@@ -24,9 +24,9 @@ namespace omegaExpDesign.RBURTool
             ConnectEach
         }
 
-        private float searchSuggestDistance = 1.0f;    // 近いレールを探す範囲
-        private float connectedDistance = 0.01f;      // 正しく接続されている判定をするレール終端距離
-        private float connectedDot = 0.86602540378f;      // 正しく接続されている判定をするレール内積
+        private static float searchSuggestDistance = 1.0f;    // 近いレールを探す範囲
+        private static float connectedDistance = 0.01f;      // 正しく接続されている判定をするレール終端距離
+        private static float connectedDot = 0.86602540378f;      // 正しく接続されている判定をするレール内積
         private List<(CinemachinePathBase a, CinemachinePathBase b, float distance)> results;
         private List<(GameObject rail, GameObject targetRail, string message, MessageType messageType,FixAction fixAction)> railResults;
         private int resultCount = 0;
@@ -355,7 +355,7 @@ namespace omegaExpDesign.RBURTool
             return;
         }
 
-        private (Rail_Script rail, RailWaypoint waypoint) searchNearRailend(Vector3 position,Vector3 tangent,Rail_Script exclusion = null)
+        private static (Rail_Script rail, RailWaypoint waypoint) searchNearRailend(Vector3 position,Vector3 tangent,Rail_Script exclusion = null)
         {
             // 他のレールのエンドポイントを探す
             var allRails = GameObject.FindObjectsOfType<Rail_Script>();
@@ -380,7 +380,7 @@ namespace omegaExpDesign.RBURTool
         }
 
         // Switchableレール(独自用語)は、Point/TurnTable/PointLever_Setter(5.0以降)のような、接続先が切り替わるレール。
-        private bool isSwitchableRail(Rail_Script rail)
+        private static bool isSwitchableRail(Rail_Script rail)
         {
             // Point_Script
             foreach (var point in GameObject.FindObjectsOfType<Point_Script>())
@@ -412,7 +412,7 @@ namespace omegaExpDesign.RBURTool
             }
             return false;
         }
-        private bool isTurnTableRail(Rail_Script rail)
+        private static bool isTurnTableRail(Rail_Script rail)
         {
             foreach (var turnTable in GameObject.FindObjectsOfType<TurnTable_Controller>())
             {
@@ -477,11 +477,11 @@ namespace omegaExpDesign.RBURTool
         /// CinemachinePath / CinemachineSmoothPath の両端点を取得する
         /// Tangentは常に内向きにする
         /// </summary>
-        private bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end)
+        private static bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end)
         {
             return TryGetEndpoints(path, out start, out end, out Vector3 startTan,out Vector3 endTan);
         }
-        private bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end, out Vector3 startTan, out Vector3 endTan)
+        private static bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end, out Vector3 startTan, out Vector3 endTan)
         {
             start = end = startTan = endTan = Vector3.zero;
 
