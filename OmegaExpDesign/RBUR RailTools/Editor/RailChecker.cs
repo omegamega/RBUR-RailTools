@@ -149,10 +149,10 @@ namespace omegaExpDesign.RBURTool
 
         private void CheckRailAndWaypoint(Rail_Script rail)
         {
-             TryGetEndpoints(rail.cinemachinePath, out var start, out var end,out Vector3 startTan,out Vector3 endTan);
+             bool getRailEndRes = TryGetEndpoints(rail.cinemachinePath, out var start, out var end,out Vector3 startTan,out Vector3 endTan);
 
             // 何故かCinemachinePathの始点終点が取れないレールがある
-            if (start == null || end == null)
+            if (!getRailEndRes)
             {
                 railResults.Add((rail.gameObject, null, "レールのCinemachinePathが取得できません。\nPathがセットされてないのかも？", MessageType.Error, FixAction.None));
                 return;
