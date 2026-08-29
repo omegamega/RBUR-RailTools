@@ -13,13 +13,13 @@ namespace omegaExpDesign.RBURTool
 {
     public class RailChecker : EditorWindow
     {
-        enum RailWaypoint{
+        public enum RailWaypoint{
             None,
             Start,
             End
         }
 
-        enum FixAction {
+        public enum FixAction {
             None,
             ConnectEach
         }
@@ -28,7 +28,7 @@ namespace omegaExpDesign.RBURTool
         private static float connectedDistance = 0.01f;      // 正しく接続されている判定をするレール終端距離
         private static float connectedDot = 0.86602540378f;      // 正しく接続されている判定をするレール内積
         private List<(CinemachinePathBase a, CinemachinePathBase b, float distance)> results;
-        private List<(GameObject rail, GameObject targetRail, string message, MessageType messageType,FixAction fixAction)> railResults;
+        public List<(GameObject rail, GameObject targetRail, string message, MessageType messageType,FixAction fixAction)> railResults;
         private int resultCount = 0;
         private Vector2 scrollPosition = Vector2.zero;
 
@@ -111,7 +111,7 @@ namespace omegaExpDesign.RBURTool
             }
         }
 
-        private void StartCheckRail()
+        public void StartCheckRail()
         {   
             resultCount = 0;
             railResults = new List<(GameObject, GameObject, string, MessageType, FixAction)>();
