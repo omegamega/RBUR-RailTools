@@ -13,21 +13,22 @@ namespace omegaExpDesign.RBURTool
 {
     public class RailChecker : EditorWindow
     {
-        enum RailWaypoint{
+        public enum RailWaypoint{
             None,
             Start,
             End
         }
 
-        enum FixAction {
+        public enum FixAction {
             None,
             ConnectEach
         }
 
-        private float searchSuggestDistance = 1.0f;    // 近いレールを探す範囲
-        private float connectedDistance = 0.01f;      // 正しく接続されている判定をするレール終端距離
+        private static float searchSuggestDistance = 1.0f;    // 近いレールを探す範囲
+        private static float connectedDistance = 0.01f;      // 正しく接続されている判定をするレール終端距離
+        private static float connectedDot = 0.86602540378f;      // 正しく接続されている判定をするレール内積
         private List<(CinemachinePathBase a, CinemachinePathBase b, float distance)> results;
-        private List<(GameObject rail, GameObject targetRail, string message, MessageType messageType,FixAction fixAction)> railResults;
+        public List<(GameObject rail, GameObject targetRail, string message, MessageType messageType,FixAction fixAction)> railResults;
         private int resultCount = 0;
         private Vector2 scrollPosition = Vector2.zero;
 
@@ -110,7 +111,7 @@ namespace omegaExpDesign.RBURTool
             }
         }
 
-        private void StartCheckRail()
+        public void StartCheckRail()
         {   
             resultCount = 0;
             railResults = new List<(GameObject, GameObject, string, MessageType, FixAction)>();
@@ -148,10 +149,10 @@ namespace omegaExpDesign.RBURTool
 
         private void CheckRailAndWaypoint(Rail_Script rail)
         {
-             TryGetEndpoints(rail.cinemachinePath, out var start, out var end);
+             bool getRailEndRes = TryGetEndpoints(rail.cinemachinePath, out var start, out var end,out Vector3 startTan,out Vector3 endTan);
 
             // 何故かCinemachinePathの始点終点が取れないレールがある
-            if (start == null || end == null)
+            if (!getRailEndRes)
             {
                 railResults.Add((rail.gameObject, null, "レールのCinemachinePathが取得できません。\nPathがセットされてないのかも？", MessageType.Error, FixAction.None));
                 return;
@@ -183,7 +184,7 @@ namespace omegaExpDesign.RBURTool
             {
                 // prevがない
                 // prev/path最初から近いレールを探す
-                var ret = searchNearRailend(start, rail);
+                var ret = searchNearRailend(start, startTan, rail);
                 if (ret.rail == null)
                 {
                     // prev/path最初の近くにレール終端がない
@@ -213,7 +214,7 @@ namespace omegaExpDesign.RBURTool
             else
             {
                 // prevはある。prevレールはこのレールにちゃんと繋がっているのか
-                TryGetEndpoints(rail.prev.cinemachinePath, out var prevStart, out var prevEnd);
+                TryGetEndpoints(rail.prev.cinemachinePath, out var prevStart, out var prevEnd, out var prevStartTan, out var prevEndTan);
                 if (rail.prev.prev == rail)
                 {
                     // prevレールはprev(start)側でこのレールと接続しているらしい
@@ -240,6 +241,27 @@ namespace omegaExpDesign.RBURTool
                         railResults.Add((rail.gameObject, rail.prev.gameObject, "prevはあるけど、そのレールはこのレールに繋がっていない\n" + rail.prev.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
                     }
                 }
+
+                //グラフ構造チェックと独立して角度差チェックを実施
+                if (!isTurnTableRail(rail))//自身がターンテーブルな場合、角度差チェックはしなし
+                {
+                    if ((prevStart - start).magnitude < (prevEnd - start).magnitude)
+                    {
+                        if (Vector3.Dot(prevStartTan, startTan) > -connectedDot)
+                        {
+                            // 折れている
+                            railResults.Add((rail.gameObject, rail.prev.gameObject, "prevと接続している部分の角度差が大きすぎる", MessageType.Error, FixAction.None));
+                        }
+                    }
+                    else
+                    {
+                        if (Vector3.Dot(prevEndTan, startTan) > -connectedDot)
+                        {
+                            // 折れている
+                            railResults.Add((rail.gameObject, rail.prev.gameObject, "prevと接続している部分の角度差が大きすぎる", MessageType.Error, FixAction.None));
+                        }
+                    }
+                }
             }
 
 
@@ -247,7 +269,7 @@ namespace omegaExpDesign.RBURTool
             {
                 // nextがない
                 // next/path終端から近いレールを探す
-                var ret = searchNearRailend(end, rail);
+                var ret = searchNearRailend(end, endTan, rail);
                 if (ret.rail == null)
                 {
                     // nextの近くにレール終端がない
@@ -278,7 +300,7 @@ namespace omegaExpDesign.RBURTool
             else
             {
                 // nextはある。nextレールはこのレールにちゃんと繋がっているのか
-                TryGetEndpoints(rail.next.cinemachinePath, out var prevStart, out var prevEnd);
+                TryGetEndpoints(rail.next.cinemachinePath, out var prevStart, out var prevEnd, out var prevStartTan, out var prevEndTan);
                 if (rail.next.prev == rail)
                 {
                     // nextレールはprev(start)側でこのレールと接続しているらしい
@@ -302,10 +324,30 @@ namespace omegaExpDesign.RBURTool
                     // ポイントレールの場合、単方向接続しているのは正しいのでここでは簡易的にパスする
                     if (!isSwitchableRail(rail))
                     {
-                        railResults.Add((rail.gameObject, rail.next?.gameObject, "nextはあるけど、そのレールはこのレールに繋がっていない\n" + rail.prev?.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
+                        railResults.Add((rail.gameObject, rail.next?.gameObject, "nextはあるけど、そのレールはこのレールに繋がっていない\n" + rail.next?.gameObject.name + "と片方向のみ繋がってるよ！", MessageType.Error, FixAction.ConnectEach));
                     }
                 }
 
+                //グラフ構造チェックと独立して角度差チェックを実施
+                if (!isTurnTableRail(rail))//自身がターンテーブルな場合、角度差チェックはしなし
+                {
+                    if ((prevStart - end).magnitude < (prevEnd - end).sqrMagnitude)
+                    {
+                        if (Vector3.Dot(prevStartTan, endTan) > -connectedDot)
+                        {
+                            // 折れている
+                            railResults.Add((rail.gameObject, rail.prev.gameObject, "prevと接続している部分の角度差が大きすぎる", MessageType.Error, FixAction.None));
+                        }
+                    }
+                    else
+                    {
+                        if (Vector3.Dot(prevEndTan, endTan) > -connectedDot)
+                        {
+                            // 折れている
+                            railResults.Add((rail.gameObject, rail.prev.gameObject, "nextと接続している部分の角度差が大きすぎる", MessageType.Error, FixAction.None));
+                        }
+                    }
+                }
             }
 
 
@@ -313,7 +355,7 @@ namespace omegaExpDesign.RBURTool
             return;
         }
 
-        private (Rail_Script rail, RailWaypoint waypoint) searchNearRailend(Vector3 position, Rail_Script exclusion = null)
+        private static (Rail_Script rail, RailWaypoint waypoint) searchNearRailend(Vector3 position,Vector3 tangent,Rail_Script exclusion = null)
         {
             // 他のレールのエンドポイントを探す
             var allRails = GameObject.FindObjectsOfType<Rail_Script>();
@@ -321,14 +363,14 @@ namespace omegaExpDesign.RBURTool
             {
                 if (r == exclusion) continue;
 
-                if (TryGetEndpoints(r.cinemachinePath, out var start, out var end))
+                if (TryGetEndpoints(r.cinemachinePath, out Vector3 start, out Vector3 end, out Vector3 startTan, out Vector3 endTan))
                 {
                     //Debug.Log(r.gameObject.name + " start" + (position - start).magnitude + " end" + (position - end).magnitude);
-                    if ((position - start).magnitude < searchSuggestDistance)
+                    if ((position - start).magnitude < searchSuggestDistance && Vector3.Dot(tangent, startTan) < -connectedDot)
                     {
                         return (r, RailWaypoint.Start);
                     }
-                    if ((position - end).magnitude < searchSuggestDistance)
+                    if ((position - end).magnitude < searchSuggestDistance && Vector3.Dot(tangent, endTan) < -connectedDot)
                     {
                         return (r, RailWaypoint.End);
                     }
@@ -338,7 +380,7 @@ namespace omegaExpDesign.RBURTool
         }
 
         // Switchableレール(独自用語)は、Point/TurnTable/PointLever_Setter(5.0以降)のような、接続先が切り替わるレール。
-        private bool isSwitchableRail(Rail_Script rail)
+        private static bool isSwitchableRail(Rail_Script rail)
         {
             // Point_Script
             foreach (var point in GameObject.FindObjectsOfType<Point_Script>())
@@ -350,13 +392,7 @@ namespace omegaExpDesign.RBURTool
             }
 
             // TurnTable_Contoller
-            foreach (var turnTable in GameObject.FindObjectsOfType<TurnTable_Controller>())
-            {
-                if (turnTable.targets.Contains(rail) || turnTable.mine == rail)
-                {
-                    return true;
-                }
-            }
+            if(isTurnTableRail(rail))return true;
 
             // PointLever_SetterはRBUR 5.0.0以降の実装なので、Reflectionを使ってRBUR b3.4との互換性を確保した
             Type t = FindType("frou01.RigidBodyTrain.PointLever_Setter");
@@ -372,6 +408,17 @@ namespace omegaExpDesign.RBURTool
                     {
                         return true;
                     }
+                }
+            }
+            return false;
+        }
+        private static bool isTurnTableRail(Rail_Script rail)
+        {
+            foreach (var turnTable in GameObject.FindObjectsOfType<TurnTable_Controller>())
+            {
+                if (turnTable.targets.Contains(rail) || turnTable.mine == rail)
+                {
+                    return true;
                 }
             }
             return false;
@@ -428,23 +475,32 @@ namespace omegaExpDesign.RBURTool
 
         /// <summary>
         /// CinemachinePath / CinemachineSmoothPath の両端点を取得する
+        /// Tangentは常に内向きにする
         /// </summary>
-        private bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end)
+        private static bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end)
         {
-            start = end = Vector3.zero;
+            return TryGetEndpoints(path, out start, out end, out Vector3 startTan,out Vector3 endTan);
+        }
+        private static bool TryGetEndpoints(CinemachinePathBase path, out Vector3 start, out Vector3 end, out Vector3 startTan, out Vector3 endTan)
+        {
+            start = end = startTan = endTan = Vector3.zero;
 
             if (!path) return false;
 
             if (path is CinemachinePath p && p.m_Waypoints.Length > 0)
             {
                 start = p.transform.TransformPoint(p.m_Waypoints[0].position);
+                startTan = p.transform.TransformDirection(p.m_Waypoints[0].tangent.normalized);
                 end = p.transform.TransformPoint(p.m_Waypoints[p.m_Waypoints.Length - 1].position);
+                endTan = -p.transform.TransformDirection(p.m_Waypoints[p.m_Waypoints.Length - 1].tangent.normalized);
                 return true;
             }
             else if (path is CinemachineSmoothPath sp && sp.m_Waypoints.Length > 0)
             {
                 start = sp.transform.TransformPoint(sp.m_Waypoints[0].position);
                 end = sp.transform.TransformPoint(sp.m_Waypoints[sp.m_Waypoints.Length - 1].position);
+                startTan = sp.transform.TransformDirection(sp.EvaluateLocalTangent(0).normalized);
+                endTan = -sp.transform.TransformDirection(sp.EvaluateLocalTangent(sp.m_Waypoints.Length - 1).normalized);
                 return true;
             }
             return false;
